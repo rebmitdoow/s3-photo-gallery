@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Images</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="css/upload.css" />
+</head>
+
+<body>
+    <div class="upload-container">
+        <h1>Ajouter un album</h1>
+        <div class="form-group">
+            <label for="rootFolder">Nom de l'album</label>
+            <input type="text" id="rootFolder" placeholder="Nom">
+        </div>
+        <div class="form-group">
+            <label for="imageFiles">Ajouter des photos</label>
+            <div id="imageFilesDropZone" class="drop-zone">
+                <input type="file" name="file" id="imageFiles" multiple accept="image/*" style="display: none;">
+                <span>
+                    <p>Glisser des photos ou
+                        <button id="addFilesButton" type="button">cliquer ici</button>
+                    </p>
+                </span>
+            </div>
+        </div>
+        <button id="uploadButton">Ajouter</button>
+        <div id="progressContainer" class="progress-container">
+            <progress id="uploadProgress" value="0" max="100"></progress>
+            <span id="progressText">0%</span>
+        </div>
+        <div id="linkContainer" class="link-container"></div>
+    </div>
+    <!-- js -->
+    <script src="js/upload.js"></script>
+</body>
+
+</html>
