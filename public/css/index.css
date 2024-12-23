@@ -69,7 +69,7 @@ nav {
 .album-card a {
   text-decoration: none;
   color: black;
-/*   font-weight: bold; */
+  /*   font-weight: bold; */
   display: block;
   margin-top: 10px;
 }
@@ -84,4 +84,71 @@ nav {
 .pagination button {
   font-size: 14px;
   font-family: var(--font-family);
+}
+
+/* Modal */
+#loginForm {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex; /* Flexbox layout for centering */
+  justify-content: center; /* Centers horizontally */
+  align-items: center; /* Centers vertically */
+}
+
+/* Modal Content */
+#loginForm .modal-content {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 5px;
+  width: 90%; /* Makes the modal responsive */
+  max-width: 400px; /* Optional: Sets a max width for larger screens */
+  text-align: center;
+  position: relative;
+  box-sizing: border-box;
+}
+
+#loginForm h2 {
+  margin-bottom: 20px;
+}
+
+#loginForm input,
+#loginForm button {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  margin: 0;
+  border-radius: 4px;
+  font-family: var(--font-family);
+}
+
+#loginForm input {
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+}
+
+#loginForm button {
+  background-color: var(--primary-color);
+  margin-top: 10px;
+  border: none;
+  color: white;
+  cursor: pointer;
+}
+
+#loginForm button:hover {
+  background-color: #0056b3;
+}
+
+#loginFormSubmit {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  /*   height: 100vh;
+  width: 100%; */
 }

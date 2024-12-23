@@ -30,6 +30,15 @@ function resizeImage(file, maxDimension, callback) {
 }
 
 $(document).ready(function () {
+  const token = localStorage.getItem("authToken");
+
+  if (!token) {
+    window.location.href = "/login";
+    return;
+  }
+});
+
+$(document).ready(function () {
   const dropZone = $("#imageFilesDropZone");
   const fileInput = $("#imageFiles");
   const uploadButton = $("#uploadButton");
@@ -109,17 +118,17 @@ $(document).ready(function () {
 
     async function uploadFile(blob, fileName, folderPath) {
       folderPath = folderPath.replace(/\\/g, "/");
-
       const uploadUrl = `/api/upload?folderPath=${encodeURIComponent(
         folderPath
       )}&fileName=${encodeURIComponent(fileName)}`;
-
       const formData = new FormData();
       formData.append("file", blob);
-
       await fetch(uploadUrl, {
         method: "POST",
         body: formData,
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
       });
     }
 

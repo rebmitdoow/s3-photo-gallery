@@ -3,9 +3,13 @@ const express = require("express");
 const AWS = require("aws-sdk");
 const multer = require("multer");
 const path = require("path");
+const jwt = require("jsonwebtoken");
+const bodyParser = require("body-parser");
 
 const app = express();
 const PORT = process.env.PORT || 5500;
+
+app.use(express.json());
 
 AWS.config.update({
   region: process.env.AWS_REGION,
@@ -17,11 +21,42 @@ AWS.config.update({
 const s3 = new AWS.S3();
 const upload = multer();
 
+const SECRET_KEY = process.env.SECRET_KEY;
+
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/css", express.static(path.join(__dirname, "public/css")));
 app.use("/js", express.static(path.join(__dirname, "public/js")));
 
-app.get("/", (req, res) => {
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).send("Unauthorized: No token provided");
+  }
+
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).send("Unauthorized: Invalid or expired token");
+  }
+};
+
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+  if (username === "admin" && password === "password") {
+    const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: "1h" });
+    res.json({ token });
+  } else {
+    res.status(401).send("Invalid credentials");
+  }
+});
+
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/login.html"));
+});
+
+app.get("/", authenticate, (req, res) => {
   res.sendFile(path.join(__dirname, "public/index.html"));
 });
 
@@ -57,31 +92,36 @@ app.get("/api/images", async (req, res) => {
   }
 });
 
-app.post("/api/upload", upload.single("file"), async (req, res) => {
-  const { folderPath, fileName } = req.query;
-  if (!req.file || !folderPath || !fileName) {
-    return res
-      .status(400)
-      .json({ error: "Missing required parameters or file" });
+app.post(
+  "/api/upload",
+  authenticate,
+  upload.single("file"),
+  async (req, res) => {
+    const { folderPath, fileName } = req.query;
+    if (!req.file || !folderPath || !fileName) {
+      return res
+        .status(400)
+        .json({ error: "Missing required parameters or file" });
+    }
+    const bucketName = process.env.AWS_BUCKET_NAME;
+    const s3Key = `${folderPath.replace(/\\/g, "/")}/${fileName}`;
+    try {
+      await s3
+        .upload({
+          Bucket: bucketName,
+          Key: s3Key,
+          Body: req.file.buffer,
+          ContentType: req.file.mimetype,
+          ACL: "public-read",
+        })
+        .promise();
+      res.status(200).json({ message: "File uploaded successfully" });
+    } catch (err) {
+      console.error("Error uploading to S3:", err);
+      res.status(500).json({ error: "Failed to upload file to S3" });
+    }
   }
-  const bucketName = process.env.AWS_BUCKET_NAME;
-  const s3Key = `${folderPath.replace(/\\/g, "/")}/${fileName}`;
-  try {
-    await s3
-      .upload({
-        Bucket: bucketName,
-        Key: s3Key,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype,
-        ACL: "public-read",
-      })
-      .promise();
-    res.status(200).json({ message: "File uploaded successfully" });
-  } catch (err) {
-    console.error("Error uploading to S3:", err);
-    res.status(500).json({ error: "Failed to upload file to S3" });
-  }
-});
+);
 
 app.get("/api/download", async (req, res) => {
   const { key } = req.query;
@@ -110,7 +150,7 @@ app.get("/api/download", async (req, res) => {
   }
 });
 
-app.get("/api/albums", async (req, res) => {
+app.get("/api/albums", authenticate, async (req, res) => {
   const bucketName = process.env.AWS_BUCKET_NAME;
   const params = {
     Bucket: bucketName,
@@ -126,7 +166,7 @@ app.get("/api/albums", async (req, res) => {
   }
 });
 
-app.get("/api/settings", async (req, res) => {
+app.get("/api/settings", authenticate, async (req, res) => {
   const bucketName = process.env.AWS_BUCKET_NAME;
   const params = {
     Bucket: bucketName,

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="css/login.css" />
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="loginForm">
+            <h2>Se connecter</h2>
+            <form id="loginForm">
+                <label for="username">Nom d'utilisateur</label>
+                <input type="text" id="username" name="username" required />
+
+                <label for="password">Mot de passe</label>
+                <input type="password" id="password" name="password" required />
+
+                <button type="submit">Connexion</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            $("#loginForm").submit(function (event) {
+                event.preventDefault();
+
+                const username = $("#username").val();
+                const password = $("#password").val();
+
+                $.ajax({
+                    url: "/api/login",
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ username, password }),
+                    success: function (response) {
+                        if (response.token) {
+                            localStorage.setItem("authToken", response.token);
+                            window.location.href = "/";
+                        } else {
+                            alert("Login failed. No token received.");
+                        }
+                    },
+                    error: function () {
+                        alert("Invalid credentials");
+                    },
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,86 @@
+/* Global Styles (if you have global styles) */
+@import "./global-styles.css";
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: var(--font-family, Arial, sans-serif);
+}
+
+/* Centered login container */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.loginForm {
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.loginForm h2 {
+  margin-bottom: 20px;
+  color: black;
+}
+
+.loginForm label {
+  display: block;
+  margin: 10px 0 5px;
+  text-align: left;
+}
+
+.loginForm input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.loginForm button {
+  width: 100%;
+  padding: 12px;
+  background-color: var(--primary-color, #007bff);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.loginForm button:hover {
+  background-color: #0056b3;
+}
+
+.loginForm input:focus,
+.loginForm button:focus {
+  outline: none;
+  box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+}
+
+/* For mobile responsiveness */
+@media (max-width: 480px) {
+  .loginForm {
+    padding: 20px;
+    width: 80%;
+  }
+
+  .loginForm button {
+    padding: 15px;
+  }
+}
