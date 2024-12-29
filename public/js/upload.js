@@ -104,17 +104,45 @@ $(document).ready(function () {
     const progressContainer = $("#progressContainer");
     const progressBar = $("#uploadProgress");
     const progressText = $("#progressText");
-
-    // Disable the button and show "Loading" with spinner
     uploadButton.prop("disabled", true);
     uploadButton.html(`<span class="loader"></span> Chargement...`);
-
     progressContainer.show();
     progressBar.val(0);
     progressText.text("0%");
 
     const totalFiles = files.length;
     let uploadedFiles = 0;
+    const albumExists = await checkIfAlbumExists(rootFolder);
+    if (albumExists) {
+      alert("Cet album existe déjà !");
+      uploadButton.prop("disabled", false);
+      uploadButton.text("Ajouter");
+      return;
+    }
+
+    async function checkIfAlbumExists(albumName) {
+      try {
+        const token = localStorage.getItem("authToken");
+        const response = await fetch("/api/albums", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok) {
+          throw new Error(
+            `Error checking album existence: ${response.statusText}`
+          );
+        }
+        const data = await response.json();
+        const existingAlbums = data.albums || [];
+        return existingAlbums.some((album) => album.album_name === albumName);
+      } catch (err) {
+        console.error("Error checking album existence:", err);
+        alert("Une erreur est survenue lors de la vérification de l'album.");
+        return false;
+      }
+    }
 
     async function uploadFile(blob, fileName, folderPath) {
       folderPath = folderPath.replace(/\\/g, "/");
@@ -123,11 +151,12 @@ $(document).ready(function () {
       )}&fileName=${encodeURIComponent(fileName)}`;
       const formData = new FormData();
       formData.append("file", blob);
+      const token = localStorage.getItem("authToken");
       await fetch(uploadUrl, {
         method: "POST",
         body: formData,
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
     }
@@ -175,16 +204,13 @@ $(document).ready(function () {
 
     progressContainer.hide();
 
-    // Update button to "Terminé" and enable link display
     if (uploadedFiles === totalFiles) {
       uploadButton.text("Terminé");
 
-      // Generate the link
-      const albumLink = `${baseUrl}/gallerie?folderPath=${encodeURIComponent(
+      const albumLink = `${baseUrl}/gallerie?id=${encodeURIComponent(
         rootFolder
       )}`;
 
-      // Update the link container with the input field and copy icon
       $("#linkContainer").html(`
         <div class="album-link-container">
           <label for="albumLink">Lien de l'album :</label>
@@ -196,8 +222,6 @@ $(document).ready(function () {
           </div>
         </div>
       `);
-
-      // Add modern copy-to-clipboard functionality
       $("#copyButton").on("click", async () => {
         try {
           await navigator.clipboard.writeText(albumLink);

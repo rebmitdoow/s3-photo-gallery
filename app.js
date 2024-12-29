@@ -42,13 +42,25 @@ const authenticate = (req, res, next) => {
   }
 };
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
-  if (username === "admin" && password === "password") {
-    const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: "1h" });
-    res.json({ token });
-  } else {
-    res.status(401).send("Invalid credentials");
+  const bucketName = process.env.AWS_BUCKET_NAME;
+  const params = {
+    Bucket: bucketName,
+    Key: "settings.json",
+  };
+  try {
+    const data = await s3.getObject(params).promise();
+    const settings = JSON.parse(data.Body.toString());
+    if (username === settings.username && password === settings.password) {
+      const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: "1h" });
+      res.json({ token });
+    } else {
+      res.status(401).send("Invalid credentials");
+    }
+  } catch (err) {
+    console.error("Error fetching settings from S3:", err);
+    res.status(500).send("Failed to authenticate, error reading settings");
   }
 });
 
@@ -97,8 +109,8 @@ app.post(
   authenticate,
   upload.single("file"),
   async (req, res) => {
-    const { folderPath, fileName } = req.query;
-    if (!req.file || !folderPath || !fileName) {
+    const { folderPath, fileName, albumName } = req.query;
+    if (!req.file || !folderPath || !fileName || !albumName) {
       return res
         .status(400)
         .json({ error: "Missing required parameters or file" });
@@ -115,10 +127,37 @@ app.post(
           ACL: "public-read",
         })
         .promise();
-      res.status(200).json({ message: "File uploaded successfully" });
+      const settingsParams = {
+        Bucket: bucketName,
+        Key: "settings.json",
+      };
+      const data = await s3.getObject(settingsParams).promise();
+      const settings = JSON.parse(data.Body.toString());
+      if (!Array.isArray(settings.albums)) {
+        settings.albums = [];
+      }
+      const albumExists = settings.albums.some(
+        (album) => album.album_name === albumName
+      );
+
+      if (albumExists) {
+        return res.status(400).json({ error: "Album already exists" });
+      }
+      settings.albums.push({ album_name: albumName });
+      await s3
+        .putObject({
+          Bucket: bucketName,
+          Key: "settings.json",
+          Body: JSON.stringify(settings, null, 2),
+          ContentType: "application/json",
+        })
+        .promise();
+      res
+        .status(200)
+        .json({ message: "File uploaded and album updated successfully" });
     } catch (err) {
-      console.error("Error uploading to S3:", err);
-      res.status(500).json({ error: "Failed to upload file to S3" });
+      console.error("Error uploading to S3 or updating settings:", err);
+      res.status(500).json({ error: "Failed to upload file or update album" });
     }
   }
 );
@@ -154,14 +193,22 @@ app.get("/api/albums", authenticate, async (req, res) => {
   const bucketName = process.env.AWS_BUCKET_NAME;
   const params = {
     Bucket: bucketName,
-    Delimiter: "/",
+    Key: "settings.json",
   };
+
   try {
-    const data = await s3.listObjectsV2(params).promise();
-    const albums = data.CommonPrefixes.map((prefix) => prefix.Prefix);
-    res.status(200).json({ albums });
+    const data = await s3.getObject(params).promise();
+    const settings = JSON.parse(data.Body.toString());
+    if (Array.isArray(settings.albums)) {
+      const albums = settings.albums.map((album) => album.album_name);
+      res.status(200).json({ albums });
+    } else {
+      res
+        .status(400)
+        .json({ error: "'albums' key not found or is not an array" });
+    }
   } catch (err) {
-    console.error("Error fetching albums from S3:", err);
+    console.error("Error fetching settings from S3:", err);
     res.status(500).json({ error: "Failed to fetch albums" });
   }
 });
