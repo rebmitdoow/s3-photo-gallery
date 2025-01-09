@@ -140,18 +140,17 @@ app.post(
         (album) => album.album_name === albumName
       );
 
-      if (albumExists) {
-        return res.status(400).json({ error: "Album already exists" });
+      if (!albumExists) {
+        settings.albums.push({ album_name: albumName });
+        await s3
+          .putObject({
+            Bucket: bucketName,
+            Key: "settings.json",
+            Body: JSON.stringify(settings, null, 2),
+            ContentType: "application/json",
+          })
+          .promise();
       }
-      settings.albums.push({ album_name: albumName });
-      await s3
-        .putObject({
-          Bucket: bucketName,
-          Key: "settings.json",
-          Body: JSON.stringify(settings, null, 2),
-          ContentType: "application/json",
-        })
-        .promise();
       res
         .status(200)
         .json({ message: "File uploaded and album updated successfully" });

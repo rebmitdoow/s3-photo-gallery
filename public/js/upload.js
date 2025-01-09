@@ -144,11 +144,13 @@ $(document).ready(function () {
       }
     }
 
-    async function uploadFile(blob, fileName, folderPath) {
+    async function uploadFile(blob, fileName, folderPath, albumName) {
       folderPath = folderPath.replace(/\\/g, "/");
       const uploadUrl = `/api/upload?folderPath=${encodeURIComponent(
         folderPath
-      )}&fileName=${encodeURIComponent(fileName)}`;
+      )}&fileName=${encodeURIComponent(
+        fileName
+      )}&albumName=${encodeURIComponent(albumName)}`;
       const formData = new FormData();
       formData.append("file", blob);
       const token = localStorage.getItem("authToken");
@@ -170,7 +172,12 @@ $(document).ready(function () {
         await new Promise((resolve, reject) => {
           resizeImage(file, 600, async (blob) => {
             try {
-              await uploadFile(blob, `thumbnails/${file.name}`, rootFolder);
+              await uploadFile(
+                blob,
+                `thumbnails/${file.name}`,
+                rootFolder,
+                rootFolder
+              );
               resolve();
             } catch (err) {
               reject(err);
@@ -181,7 +188,7 @@ $(document).ready(function () {
         await new Promise((resolve, reject) => {
           resizeImage(file, 1920, async (blob) => {
             try {
-              await uploadFile(blob, file.name, rootFolder);
+              await uploadFile(blob, file.name, rootFolder, rootFolder);
               resolve();
             } catch (err) {
               reject(err);
