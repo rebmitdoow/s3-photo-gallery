@@ -23,18 +23,25 @@ $(document).ready(function () {
         albumContainer.append("<p>No albums found.</p>");
       } else {
         albumData.forEach(function (album) {
-          const cleanName = album.replace("/", "");
           const albumCard = `<div class="album-card">
                       <a href='/gallerie?id=${encodeURIComponent(
-                        cleanName
-                      )}' class="album-link">${cleanName}</a>
+                        album.album_name
+                      )}' class="album-link">${album.album_name}</a>
                   </div>`;
           albumContainer.append(albumCard);
         });
       }
     },
     error: function (xhr) {
-      if (xhr.status === 401 || xhr.status === 403) {
+      console.log("Error response:", xhr);
+      console.log("Response JSON:", xhr.responseJSON);
+
+      if (xhr.status === 302) {
+        const redirectUrl =
+          /* xhr.responseJSON?.redirect ||  */ "/s3Form";
+        console.log("Redirecting to:", redirectUrl);
+        window.location.href = redirectUrl;
+      } else if (xhr.status === 401 || xhr.status === 403) {
         alert("Session expired. Please log in again.");
         localStorage.removeItem("authToken");
         window.location.href = "/login";

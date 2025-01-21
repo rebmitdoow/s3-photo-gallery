@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
+    <title>Login or Register</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="css/login.css" />
 </head>
@@ -12,7 +12,9 @@
 <body>
     <div class="login-container">
         <div class="loginForm">
-            <h2>Se connecter</h2>
+            <h2 id="formTitle">Se connecter</h2>
+
+            <!-- Login Form -->
             <form id="loginForm">
                 <label for="username">Nom d'utilisateur</label>
                 <input type="text" id="username" name="username" required />
@@ -22,11 +24,42 @@
 
                 <button type="submit">Connexion</button>
             </form>
+
+            <!-- Register Form (initially hidden) -->
+            <form id="registerForm" style="display: none;">
+                <label for="newUsername">Nom d'utilisateur</label>
+                <input type="text" id="newUsername" name="username" required />
+
+                <label for="newPassword">Mot de passe</label>
+                <input type="password" id="newPassword" name="password" required />
+
+                <button type="submit">S'inscrire</button>
+            </form>
+
+            <p id="toggleFormText">
+                <a href="#" id="toggleFormLink">Pas encore de compte? S'inscrire</a>
+            </p>
         </div>
     </div>
 
     <script>
         $(document).ready(function () {
+            $("#toggleFormLink").click(function (event) {
+                event.preventDefault();
+
+                if ($("#loginForm").is(":visible")) {
+                    $("#loginForm").hide();
+                    $("#registerForm").show();
+                    $("#formTitle").text("S'inscrire");
+                    $("#toggleFormLink").text("Déjà un compte? Se connecter");
+                } else {
+                    $("#registerForm").hide();
+                    $("#loginForm").show();
+                    $("#formTitle").text("Se connecter");
+                    $("#toggleFormLink").text("Pas encore de compte? S'inscrire");
+                }
+            });
+
             $("#loginForm").submit(function (event) {
                 event.preventDefault();
 
@@ -48,6 +81,30 @@
                     },
                     error: function () {
                         alert("Invalid credentials");
+                    },
+                });
+            });
+
+            $("#registerForm").submit(function (event) {
+                event.preventDefault();
+
+                const username = $("#newUsername").val();
+                const password = $("#newPassword").val();
+
+                $.ajax({
+                    url: "/api/register",
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ username, password }),
+                    success: function (response) {
+                        alert("Registration successful! You can now log in.");
+                        $("#registerForm").hide();
+                        $("#loginForm").show();
+                        $("#formTitle").text("Se connecter");
+                        $("#toggleFormLink").text("Pas encore de compte? S'inscrire");
+                    },
+                    error: function () {
+                        alert("Error during registration. Please try again.");
                     },
                 });
             });

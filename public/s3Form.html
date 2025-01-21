@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add s3 Credentials</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <h2>Add s3 Credentials</h2>
+        <form id="S3CredentialsForm">
+            <label for="s3_name">s3 Bucket Name:</label>
+            <input type="text" id="s3_name" name="s3_name" required>
+
+            <label for="s3_access_key_id">s3 Access Key ID:</label>
+            <input type="text" id="s3_access_key_id" name="s3_access_key_id" required>
+
+            <label for="s3_secret_access_key">s3 Secret Access Key:</label>
+            <input type="text" id="s3_secret_access_key" name="s3_secret_access_key" required>
+
+            <label for="s3_region">s3 Region:</label>
+            <input type="text" id="s3_region" name="s3_region" required>
+
+            <label for="s3_endpoint">s3 Endpoint:</label>
+            <input type="text" id="s3_endpoint" name="s3_endpoint" required>
+
+            <button type="submit">Save s3 Credentials</button>
+        </form>
+    </div>
+    <script src="js/s3Form.js" defer></script>
+</body>
+
+</html>

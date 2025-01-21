@@ -1,12 +1,44 @@
 require("dotenv").config();
 const express = require("express");
-const AWS = require("aws-sdk");
-const multer = require("multer");
+const { Upload } = require("@aws-sdk/lib-storage");
+const { S3, S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const path = require("path");
+const multer = require("multer");
 const jwt = require("jsonwebtoken");
 const bodyParser = require("body-parser");
 const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcrypt");
+
+const crypto = require("crypto");
+
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+const IV_LENGTH = 16;
+
+function encrypt(text) {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(
+    "aes-256-cbc",
+    Buffer.from(ENCRYPTION_KEY),
+    iv
+  );
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString("hex") + ":" + encrypted.toString("hex");
+}
+
+function decrypt(text) {
+  const textParts = text.split(":");
+  const iv = Buffer.from(textParts.shift(), "hex");
+  const encryptedText = Buffer.from(textParts.join(":"), "hex");
+  const decipher = crypto.createDecipheriv(
+    "aes-256-cbc",
+    Buffer.from(ENCRYPTION_KEY),
+    iv
+  );
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
+}
 
 const app = express();
 const PORT = process.env.PORT || 5500;
@@ -15,14 +47,7 @@ const db = new sqlite3.Database("./database.db");
 
 app.use(express.json());
 
-AWS.config.update({
-  region: process.env.AWS_REGION,
-  endpoint: process.env.AWS_ENDPOINT,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-});
-
-const s3 = new AWS.S3();
+const s3 = new S3();
 const upload = multer();
 
 const SECRET_KEY = process.env.SECRET_KEY;
@@ -33,16 +58,76 @@ app.use("/js", express.static(path.join(__dirname, "public/js")));
 
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
+  console.log("token from auth", token);
   if (!token) {
+    console.error("No token provided in request");
     return res.status(401).send("Unauthorized: No token provided");
   }
-
   try {
     const decoded = jwt.verify(token, SECRET_KEY);
+    console.log("Decoded token:", decoded);
     req.user = decoded;
     next();
   } catch (err) {
+    console.error("Invalid or expired token:", err.message);
     return res.status(403).send("Unauthorized: Invalid or expired token");
+  }
+};
+
+const getS3CredentialsMiddleware = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      console.error("User ID missing in request");
+      return res.status(400).send("User ID is missing from request.");
+    }
+
+    console.log("Fetching S3 credentials for user ID:", userId);
+
+    db.get(
+      `SELECT s3_name, s3_endpoint, s3_access_key_id, s3_secret_access_key, s3_region FROM users WHERE id = ?`,
+      [userId],
+      (err, user) => {
+        if (err) {
+          console.error("Database error:", err.message);
+          return res
+            .status(500)
+            .json({ error: "Database error.", details: err.message });
+        }
+
+        if (
+          user &&
+          user.s3_name &&
+          user.s3_access_key_id &&
+          user.s3_secret_access_key &&
+          user.s3_region &&
+          user.s3_endpoint
+        ) {
+          const userS3 = new S3Client({
+            region: user.s3_region,
+            credentials: {
+              accessKeyId: user.s3_access_key_id,
+              secretAccessKey: decrypt(user.s3_secret_access_key),
+            },
+            endpoint: user.s3_endpoint,
+          });
+         /*  console.log("User S3 credentials found:", userS3); */
+          req.userS3 = userS3;
+          req.userBucketName = user.s3_name;
+          return next();
+        } else {
+          console.log(
+            "User S3 credentials missing; redirecting to set credentials page"
+          );
+          return res.status(302).json({ redirect: "/s3Form" });
+        }
+      }
+    );
+  } catch (err) {
+    console.error("Unexpected server error:", err.message);
+    return res
+      .status(500)
+      .json({ error: "Server error.", details: err.message });
   }
 };
 
@@ -120,9 +205,172 @@ app.get("/", authenticate, (req, res) => {
   res.sendFile(path.join(__dirname, "public/index.html"));
 });
 
+app.get(
+  "/api/albums",
+  authenticate,
+  getS3CredentialsMiddleware,
+  async (req, res) => {
+    const bucketName = req.userBucketName;
+    console.log("bucketName", bucketName);
+    const params = {
+      Bucket: bucketName,
+      Key: "settings.json",
+    };
+    try {
+      const command = new GetObjectCommand(params);
+      const data = await req.userS3.send(command);
+     /*  console.log("data", data); */
+      const body = await streamToString(data.Body);
+      const settings = JSON.parse(body);
+      const albums = settings.albums
+        .filter((album) => album.album_name)
+        .map((album) => ({
+          album_name: album.album_name,
+          is_private: album.is_private || false,
+          cover_key: album.cover_key || "",
+        }));
+      return res.status(200).json({ albums });
+    } catch (err) {
+      console.error("Error fetching settings from S3:", err);
+      return res.status(500).json({ error: "Failed to fetch albums." });
+    }
+  }
+);
+const streamToString = (stream) => {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    stream.on("data", (chunk) => {
+      data += chunk;
+    });
+    stream.on("end", () => {
+      resolve(data);
+    });
+    stream.on("error", reject);
+  });
+};
+
+app.get(
+  "/s3Form",
+  /* authenticate , */ (req, res) => {
+    console.log("User is being redirected to set S3 credentials page.");
+    res.sendFile(path.join(__dirname, "public/s3Form.html"));
+  }
+);
+
+app.post("/api/user/s3-credentials", authenticate, (req, res) => {
+  const {
+    s3_name,
+    s3_access_key_id,
+    s3_secret_access_key,
+    s3_region,
+    s3_endpoint,
+  } = req.body;
+  const userId = req.user.id;
+  console.log("userId", userId); //this works
+
+  if (
+    !s3_name ||
+    !s3_access_key_id ||
+    !s3_secret_access_key ||
+    !s3_region ||
+    !s3_endpoint
+  ) {
+    return res.status(400).json({ error: "AWS credentials are required." });
+  }
+
+  const encryptedSecretKey = encrypt(s3_secret_access_key);
+
+  db.run(
+    `UPDATE users SET s3_name = ?, s3_access_key_id = ?, s3_secret_access_key = ?, s3_region = ?, s3_endpoint = ? WHERE id = ?`,
+    [
+      s3_name,
+      s3_access_key_id,
+      encryptedSecretKey,
+      s3_region,
+      s3_endpoint,
+      userId,
+    ],
+    function (err) {
+      if (err) {
+        return res
+          .status(500) //but i get stuck here
+          .json({ error: "Database error.", details: err.message });
+      }
+      res
+        .status(200)
+        .json({ message: "AWS credentials updated successfully." });
+    }
+  );
+});
+
 app.get("/upload", (req, res) => {
   res.sendFile(path.join(__dirname, "public/upload.html"));
 });
+
+app.post(
+  "/api/upload",
+  authenticate,
+  multer().single("file"),
+  async (req, res) => {
+    const { folderPath, fileName } = req.query;
+    if (!req.file || !folderPath || !fileName) {
+      return res
+        .status(400)
+        .json({ error: "Missing required parameters or file" });
+    }
+
+    db.get(
+      `SELECT s3_access_key_id, s3_secret_access_key, s3_region FROM users WHERE id = ?`,
+      [req.user.id],
+      async (err, user) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ error: "Database error.", details: err.message });
+        }
+
+        if (
+          !user ||
+          !user.s3_name ||
+          !user.s3_access_key_id ||
+          !user.s3_secret_access_key ||
+          !user.s3_region ||
+          !user.s3_endpoint
+        ) {
+          return res
+            .status(400)
+            .json({ error: "AWS credentials are not set." });
+        }
+
+        const userS3 = new S3({
+          bucketName: user.s3_name,
+          accessKeyId: user.s3_access_key_id,
+          secretAccessKey: user.s3_secret_access_key,
+          region: user.s3_region,
+          endpoint: user.s3_endpoint,
+        });
+
+        const s3Key = `${folderPath.replace(/\\/g, "/")}/${fileName}`;
+        try {
+          await userS3
+            .upload({
+              Bucket: bucketName,
+              Key: s3Key,
+              Body: req.file.buffer,
+              ContentType: req.file.mimetype,
+              ACL: "public-read",
+            })
+            .promise();
+
+          res.status(200).json({ message: "File uploaded successfully" });
+        } catch (err) {
+          console.error("Error uploading to S3:", err);
+          res.status(500).json({ error: "Failed to upload file" });
+        }
+      }
+    );
+  }
+);
 
 app.get("/gallerie", (req, res) => {
   res.sendFile(path.join(__dirname, "public/grid.html"));
@@ -152,63 +400,6 @@ app.get("/api/images", async (req, res) => {
   }
 });
 
-app.post(
-  "/api/upload",
-  authenticate,
-  upload.single("file"),
-  async (req, res) => {
-    const { folderPath, fileName, albumName } = req.query;
-    if (!req.file || !folderPath || !fileName || !albumName) {
-      return res
-        .status(400)
-        .json({ error: "Missing required parameters or file" });
-    }
-    const bucketName = process.env.AWS_BUCKET_NAME;
-    const s3Key = `${folderPath.replace(/\\/g, "/")}/${fileName}`;
-    try {
-      await s3
-        .upload({
-          Bucket: bucketName,
-          Key: s3Key,
-          Body: req.file.buffer,
-          ContentType: req.file.mimetype,
-          ACL: "public-read",
-        })
-        .promise();
-      const settingsParams = {
-        Bucket: bucketName,
-        Key: "settings.json",
-      };
-      const data = await s3.getObject(settingsParams).promise();
-      const settings = JSON.parse(data.Body.toString());
-      if (!Array.isArray(settings.albums)) {
-        settings.albums = [];
-      }
-      const albumExists = settings.albums.some(
-        (album) => album.album_name === albumName
-      );
-
-      if (!albumExists) {
-        settings.albums.push({ album_name: albumName });
-        await s3
-          .putObject({
-            Bucket: bucketName,
-            Key: "settings.json",
-            Body: JSON.stringify(settings, null, 2),
-            ContentType: "application/json",
-          })
-          .promise();
-      }
-      res
-        .status(200)
-        .json({ message: "File uploaded and album updated successfully" });
-    } catch (err) {
-      console.error("Error uploading to S3 or updating settings:", err);
-      res.status(500).json({ error: "Failed to upload file or update album" });
-    }
-  }
-);
-
 app.get("/api/download", async (req, res) => {
   const { key } = req.query;
   if (!key) {
@@ -233,30 +424,6 @@ app.get("/api/download", async (req, res) => {
   } catch (err) {
     console.error("Error fetching file from S3:", err);
     res.status(500).json({ error: "Failed to download image" });
-  }
-});
-
-app.get("/api/albums", authenticate, async (req, res) => {
-  const bucketName = process.env.AWS_BUCKET_NAME;
-  const params = {
-    Bucket: bucketName,
-    Key: "settings.json",
-  };
-
-  try {
-    const data = await s3.getObject(params).promise();
-    const settings = JSON.parse(data.Body.toString());
-    if (Array.isArray(settings.albums)) {
-      const albums = settings.albums.map((album) => album.album_name);
-      res.status(200).json({ albums });
-    } else {
-      res
-        .status(400)
-        .json({ error: "'albums' key not found or is not an array" });
-    }
-  } catch (err) {
-    console.error("Error fetching settings from S3:", err);
-    res.status(500).json({ error: "Failed to fetch albums" });
   }
 });
 
