@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const { Upload } = require("@aws-sdk/lib-storage");
 const { S3, S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const path = require("path");
 const multer = require("multer");
 const jwt = require("jsonwebtoken");
@@ -58,14 +59,14 @@ app.use("/js", express.static(path.join(__dirname, "public/js")));
 
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
-  console.log("token from auth", token);
+  /* console.log("token from auth", token); */
   if (!token) {
     console.error("No token provided in request");
     return res.status(401).send("Unauthorized: No token provided");
   }
   try {
     const decoded = jwt.verify(token, SECRET_KEY);
-    console.log("Decoded token:", decoded);
+    /* console.log("Decoded token:", decoded); */
     req.user = decoded;
     next();
   } catch (err) {
@@ -82,7 +83,7 @@ const getS3CredentialsMiddleware = async (req, res, next) => {
       return res.status(400).send("User ID is missing from request.");
     }
 
-    console.log("Fetching S3 credentials for user ID:", userId);
+    /* console.log("Fetching S3 credentials for user ID:", userId); */
 
     db.get(
       `SELECT s3_name, s3_endpoint, s3_access_key_id, s3_secret_access_key, s3_region FROM users WHERE id = ?`,
@@ -111,9 +112,10 @@ const getS3CredentialsMiddleware = async (req, res, next) => {
             },
             endpoint: user.s3_endpoint,
           });
-         /*  console.log("User S3 credentials found:", userS3); */
+          /*  console.log("User S3 credentials found:", userS3); */
           req.userS3 = userS3;
           req.userBucketName = user.s3_name;
+          req.userS3Endpoint = user.s3_endpoint;
           return next();
         } else {
           console.log(
@@ -205,13 +207,20 @@ app.get("/", authenticate, (req, res) => {
   res.sendFile(path.join(__dirname, "public/index.html"));
 });
 
+app.get("/api/config", authenticate, (req, res) => {
+  const config = {
+    baseUrl: process.env.BASE_URL || `http://localhost:${PORT}`,
+  };
+  res.status(200).json(config);
+});
+
 app.get(
   "/api/albums",
   authenticate,
   getS3CredentialsMiddleware,
   async (req, res) => {
     const bucketName = req.userBucketName;
-    console.log("bucketName", bucketName);
+    /* console.log("bucketName", bucketName); */
     const params = {
       Bucket: bucketName,
       Key: "settings.json",
@@ -219,7 +228,7 @@ app.get(
     try {
       const command = new GetObjectCommand(params);
       const data = await req.userS3.send(command);
-     /*  console.log("data", data); */
+      /*  console.log("data", data); */
       const body = await streamToString(data.Body);
       const settings = JSON.parse(body);
       const albums = settings.albums
@@ -266,7 +275,7 @@ app.post("/api/user/s3-credentials", authenticate, (req, res) => {
     s3_endpoint,
   } = req.body;
   const userId = req.user.id;
-  console.log("userId", userId); //this works
+  console.log("userId", userId);
 
   if (
     !s3_name ||
@@ -293,7 +302,7 @@ app.post("/api/user/s3-credentials", authenticate, (req, res) => {
     function (err) {
       if (err) {
         return res
-          .status(500) //but i get stuck here
+          .status(500)
           .json({ error: "Database error.", details: err.message });
       }
       res
@@ -310,6 +319,7 @@ app.get("/upload", (req, res) => {
 app.post(
   "/api/upload",
   authenticate,
+  getS3CredentialsMiddleware,
   multer().single("file"),
   async (req, res) => {
     const { folderPath, fileName } = req.query;
@@ -376,29 +386,42 @@ app.get("/gallerie", (req, res) => {
   res.sendFile(path.join(__dirname, "public/grid.html"));
 });
 
-app.get("/api/images", async (req, res) => {
-  const folderPath = req.query.id;
-  if (!folderPath) {
-    return res.status(400).json({ error: "id query parameter is required" });
-  }
+app.get(
+  "/api/images",
+  authenticate,
+  getS3CredentialsMiddleware,
+  async (req, res) => {
+    const folderPath = req.query.id;
+    if (!folderPath) {
+      return res.status(400).json({ error: "id query parameter is required" });
+    }
 
-  const bucketName = process.env.AWS_BUCKET_NAME;
-  const params = {
-    Bucket: bucketName,
-    Prefix: `${folderPath}/thumbnails/`,
-  };
+    const bucketName = req.userBucketName;
 
-  try {
-    const data = await s3.listObjectsV2(params).promise();
-    const imageUrls = data.Contents.map((item) => {
-      return `https://${bucketName}.${process.env.AWS_ENDPOINT}/${item.Key}`;
-    }).filter((url) => !url.endsWith(".blank"));
-    res.json({ images: imageUrls });
-  } catch (err) {
-    console.error("Error fetching S3 files:", err);
-    res.status(500).json({ error: "Failed to fetch images" });
+    const params = {
+      Bucket: bucketName,
+      Prefix: `${folderPath}/thumbnails/`,
+    };
+
+    try {
+      const command = new ListObjectsV2Command(params);
+      const data = await req.userS3.send(command);
+
+      const baseUrl = `https://${bucketName}.${
+        new URL(req.userS3Endpoint).host
+      }`;
+
+      const imageUrls = (data.Contents || [])
+        .map((item) => `${baseUrl}/${item.Key}`)
+        .filter((url) => !url.endsWith(".blank"));
+
+      res.json({ images: imageUrls });
+    } catch (err) {
+      console.error("Error fetching S3 files:", err);
+      res.status(500).json({ error: "Failed to fetch images" });
+    }
   }
-});
+);
 
 app.get("/api/download", async (req, res) => {
   const { key } = req.query;

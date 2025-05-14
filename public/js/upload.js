@@ -1,4 +1,27 @@
-const baseUrl = "http://localhost:5500";
+let baseUrl = "";
+
+$(document).ready(function () {
+  const token = localStorage.getItem("authToken");
+
+  if (!token) {
+    window.location.href = "/login";
+    return;
+  }
+
+  $.ajax({
+    url: "/api/config",
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    success: function (response) {
+      baseUrl = response.baseUrl;
+    },
+    error: function () {
+      alert("Failed to fetch configuration.");
+    },
+  });
+});
 
 function resizeImage(file, maxDimension, callback) {
   const reader = new FileReader();

@@ -1,3 +1,4 @@
+const token = localStorage.getItem("authToken");
 var imageUrls = [];
 
 // In memory cache
@@ -99,6 +100,9 @@ $(document).ready(function () {
   $.ajax({
     url: `/api/images?id=${encodeURIComponent(folderPath)}`,
     method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
     success: function (response) {
       const imageData = response.images || [];
       imageData.forEach(function (fileUrl) {

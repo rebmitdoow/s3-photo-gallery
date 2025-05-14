@@ -1,4 +1,3 @@
-const baseUrl = "http://localhost:5500";
 const emptyList = $(".albumList");
 
 $(document).ready(function () {
@@ -10,7 +9,7 @@ $(document).ready(function () {
   }
 
   $.ajax({
-    url: `${baseUrl}/api/albums`,
+    url: `/api/albums`,
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -37,8 +36,7 @@ $(document).ready(function () {
       console.log("Response JSON:", xhr.responseJSON);
 
       if (xhr.status === 302) {
-        const redirectUrl =
-          /* xhr.responseJSON?.redirect ||  */ "/s3Form";
+        const redirectUrl = /* xhr.responseJSON?.redirect ||  */ "/s3Form";
         console.log("Redirecting to:", redirectUrl);
         window.location.href = redirectUrl;
       } else if (xhr.status === 401 || xhr.status === 403) {
